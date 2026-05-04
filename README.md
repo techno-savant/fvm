@@ -1,6 +1,6 @@
 # fvm
 
-`fvm` is a Foundry version manager.
+`fvm` is a Foundry version manager. It installs signed fvm binaries from GitHub Releases.
 
 It helps you install multiple Foundry Virtual Tabletop versions on one machine and switch between them per project, per user, or for just the current shell session.
 
