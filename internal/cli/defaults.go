@@ -255,6 +255,7 @@ func New(stdout, stderr io.Writer) (*App, error) {
 	provider := releases.NewFoundryProvider("", cookie, cfg.ReleaseChannel, nil)
 	provider.Username = username
 	provider.Password = password
+	provider.Platform = releases.CurrentPlatform()
 	if cfg.FoundryPlatform != "" {
 		provider.Platform = cfg.FoundryPlatform
 	}

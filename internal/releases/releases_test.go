@@ -190,8 +190,8 @@ func TestIsVersionString(t *testing.T) {
 }
 
 func TestCurrentPlatformDefault(t *testing.T) {
-	if got := releases.CurrentPlatform(); got != "node" {
-		t.Fatalf("expected default platform node, got %q", got)
+	if got := releases.CurrentPlatform(); got != "mac" {
+		t.Fatalf("expected default platform mac on darwin host, got %q", got)
 	}
 }
 

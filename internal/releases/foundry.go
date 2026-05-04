@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -373,7 +374,16 @@ func (p *FoundryProvider) downloadAndExtract(url, destDir string) error {
 }
 
 func CurrentPlatform() string {
-	return "node"
+	switch runtime.GOOS {
+	case "darwin":
+		return "mac"
+	case "windows":
+		return "windows"
+	case "linux":
+		return "linux"
+	default:
+		return "node"
+	}
 }
 
 func versionToBuild(version string) string {
