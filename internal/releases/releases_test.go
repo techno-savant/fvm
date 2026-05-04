@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -190,8 +191,16 @@ func TestIsVersionString(t *testing.T) {
 }
 
 func TestCurrentPlatformDefault(t *testing.T) {
-	if got := releases.CurrentPlatform(); got != "mac" {
-		t.Fatalf("expected default platform mac on darwin host, got %q", got)
+	want := map[string]string{
+		"darwin":  "mac",
+		"linux":   "linux",
+		"windows": "windows",
+	}[runtime.GOOS]
+	if want == "" {
+		want = "node"
+	}
+	if got := releases.CurrentPlatform(); got != want {
+		t.Fatalf("expected default platform %q on %s host, got %q", want, runtime.GOOS, got)
 	}
 }
 
