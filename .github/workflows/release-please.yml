@@ -113,4 +113,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.release-please.outputs.tag_name }}
         run: |
-          gh release upload "${VERSION}" dist/*.tar.gz dist/*.zip dist/checksums.sha256 --clobber
+          gh release upload "${VERSION}" dist/*.tar.gz dist/*.zip dist/checksums.sha256 --repo techno-savant/fvm --clobber
