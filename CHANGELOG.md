@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/techno-savant/fvm/compare/v0.4.0...v0.5.0) (2026-05-04)
+
+
+### Features
+
+* document GitHub Releases install source ([ff5baee](https://github.com/techno-savant/fvm/commit/ff5baeedaf1fb8e193ed402204f790f528a7ea3f))
+* support macOS dmg installs ([7f0fe3c](https://github.com/techno-savant/fvm/commit/7f0fe3cda2e0dbbb998fa972d1a76fa86a131b90))
+
+
+### Bug Fixes
+
+* target repo explicitly when uploading release assets ([dfd5e4b](https://github.com/techno-savant/fvm/commit/dfd5e4b4b91ea3b58f1bbcae39ceb206acf04a5c))
+
 ## [0.4.0](https://github.com/techno-savant/fvm/compare/v0.3.0...v0.4.0) (2026-05-04)
 
 
