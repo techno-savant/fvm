@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -259,6 +261,34 @@ func TestRunWhichNotInstalled(t *testing.T) {
 
 	if err := app.Run([]string{"which"}); err == nil {
 		t.Fatal("expected error when version not installed")
+	}
+}
+
+func TestRegistryAdapterExecutablePath_macAppBundle(t *testing.T) {
+	dir := t.TempDir()
+	version := "13.346"
+	root := filepath.Join(dir, ".fvm", "versions", version)
+	appBinary := filepath.Join(root, "foundry", "Foundry Virtual Tabletop.app", "Contents", "MacOS", "Foundry Virtual Tabletop")
+	if err := os.MkdirAll(filepath.Dir(appBinary), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(appBinary, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	fakeHome := filepath.Join(dir)
+	if err := os.Setenv("HOME", fakeHome); err != nil {
+		t.Fatalf("Setenv: %v", err)
+	}
+	defer os.Setenv("HOME", oldHome)
+
+	exePath, err := (&registryAdapter{}).ExecutablePath(version)
+	if err != nil {
+		t.Fatalf("ExecutablePath: %v", err)
+	}
+	if exePath != appBinary {
+		t.Fatalf("expected %q, got %q", appBinary, exePath)
 	}
 }
 

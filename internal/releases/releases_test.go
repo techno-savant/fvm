@@ -310,7 +310,7 @@ func TestFoundryProviderResolveDownload_requiresAuth(t *testing.T) {
 func TestFoundryProviderInstall_rejectsUnsupportedArchiveFormat(t *testing.T) {
 	provider := releases.NewFoundryProvider("https://foundryvtt.com", "sessionid=abc", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if strings.Contains(req.URL.Host, "foundryvtt.com") {
-			body := `{"version":"14.360","url":"https://r2.foundryvtt.com/releases/14.360/FoundryVTT-14.360.dmg?verify=abc","lifetime":300}`
+			body := `{"version":"14.360","url":"https://r2.foundryvtt.com/releases/14.360/FoundryVTT-14.360.foo?verify=abc","lifetime":300}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(body)),
@@ -325,7 +325,31 @@ func TestFoundryProviderInstall_rejectsUnsupportedArchiveFormat(t *testing.T) {
 	}))
 	provider.Platform = "mac"
 	if err := provider.Install("14.360", t.TempDir()); err == nil {
-		t.Fatal("expected unsupported archive format error for dmg")
+		t.Fatal("expected unsupported archive format error for unknown extension")
+	}
+}
+
+func TestFoundryProviderInstall_dmgRequiresMacOSHost(t *testing.T) {
+	provider := releases.NewFoundryProvider("https://foundryvtt.com", "sessionid=abc", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Host, "foundryvtt.com") {
+			body := `{"version":"14.360","url":"https://r2.foundryvtt.com/releases/14.360/FoundryVTT-14.360.dmg?verify=abc","lifetime":300}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte("fake dmg"))),
+			Header:     make(http.Header),
+		}, nil
+	}))
+	provider.Platform = "mac"
+	if err := provider.Install("14.360", t.TempDir()); err == nil {
+		t.Fatal("expected dmg install error on non-macOS host")
+	} else if runtime.GOOS != "darwin" && !strings.Contains(err.Error(), "dmg installation is only supported on macOS hosts") {
+		t.Fatalf("expected non-macOS dmg error, got %v", err)
 	}
 }
 

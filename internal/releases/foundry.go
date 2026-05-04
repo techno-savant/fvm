@@ -11,6 +11,7 @@ import (
 	"net/http"
 	urlpkg "net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -368,9 +369,127 @@ func (p *FoundryProvider) downloadAndExtract(url, destDir string) error {
 		return extractZip(resp.Body, destDir)
 	case strings.HasSuffix(archivePath, ".tar.gz"), strings.HasSuffix(archivePath, ".tgz"):
 		return extractTarGz(resp.Body, destDir)
+	case strings.HasSuffix(archivePath, ".dmg"):
+		return extractDMG(resp.Body, destDir)
 	default:
 		return fmt.Errorf("unsupported release archive format: %s", url)
 	}
+}
+
+func extractDMG(r io.Reader, destDir string) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("dmg installation is only supported on macOS hosts")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "fvm-dmg-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dmgPath := filepath.Join(tmpDir, "foundry.dmg")
+	dmgFile, err := os.Create(dmgPath)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(dmgFile, r); err != nil {
+		dmgFile.Close()
+		return err
+	}
+	if err := dmgFile.Close(); err != nil {
+		return err
+	}
+
+	mountPoint := filepath.Join(tmpDir, "mount")
+	if err := os.MkdirAll(mountPoint, 0o755); err != nil {
+		return err
+	}
+
+	attach := exec.Command("hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint, dmgPath)
+	attachOut, err := attach.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mount dmg: %w: %s", err, strings.TrimSpace(string(attachOut)))
+	}
+	defer func() {
+		detach := exec.Command("hdiutil", "detach", mountPoint)
+		_, _ = detach.CombinedOutput()
+	}()
+
+	appPath, err := findFoundryAppBundle(mountPoint)
+	if err != nil {
+		return err
+	}
+
+	targetRoot := filepath.Join(destDir, "foundry")
+	if err := os.MkdirAll(targetRoot, 0o755); err != nil {
+		return err
+	}
+	return copyDir(appPath, filepath.Join(targetRoot, filepath.Base(appPath)))
+}
+
+func findFoundryAppBundle(root string) (string, error) {
+	var found string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && strings.HasSuffix(info.Name(), ".app") {
+			found = path
+			return io.EOF
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("no .app bundle found in mounted dmg")
+	}
+	return found, nil
+}
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		}
+		// handle symlinks
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			return os.Symlink(linkTarget, target)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			out.Close()
+			return err
+		}
+		return out.Close()
+	})
 }
 
 func CurrentPlatform() string {

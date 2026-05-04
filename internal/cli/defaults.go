@@ -94,10 +94,12 @@ func (r *registryAdapter) ExecutablePath(version string) (string, error) {
 		filepath.Join(layout.BinPath(), "foundryvtt"),
 		filepath.Join(layout.FoundryPath(), "foundry"),
 		filepath.Join(layout.FoundryPath(), "foundryvtt"),
-		filepath.Join(layout.Root, "foundry"),
+		filepath.Join(layout.FoundryPath(), "Foundry Virtual Tabletop.app", "Contents", "MacOS", "Foundry Virtual Tabletop"),
 		filepath.Join(layout.Root, "foundryvtt"),
+		filepath.Join(layout.Root, "foundry"),
 	} {
-		if _, statErr := os.Stat(candidate); statErr == nil {
+		info, statErr := os.Stat(candidate)
+		if statErr == nil && !info.IsDir() {
 			return candidate, nil
 		}
 	}
