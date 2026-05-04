@@ -1,0 +1,86 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/foundry/fvm/internal/cli.Version=${GITHUB_REF_NAME}" \
+            -o "dist/fvm" \
+            ./cmd/fvm
+
+      - name: Package archive
+        run: |
+          ARCHIVE="fvm_${GITHUB_REF_NAME}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz"
+          tar -czf "dist/${ARCHIVE}" -C dist fvm
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fvm_${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/fvm_${{ github.ref_name }}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: create release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          sha256sum fvm_*.tar.gz > checksums.sha256
+          echo "--- checksums.sha256 ---"
+          cat checksums.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/fvm_*.tar.gz
+            dist/checksums.sha256
+          generate_release_notes: true
