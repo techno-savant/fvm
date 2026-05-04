@@ -237,7 +237,24 @@ func New(stdout, stderr io.Writer) (*App, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	provider := &releases.StubProvider{}
+	cookie := cfg.FoundryCookie
+	if envCookie := os.Getenv("FOUNDRY_COOKIE"); envCookie != "" {
+		cookie = envCookie
+	}
+	username := cfg.FoundryUsername
+	if envUsername := os.Getenv("FOUNDRY_USERNAME"); envUsername != "" {
+		username = envUsername
+	}
+	password := cfg.FoundryPassword
+	if envPassword := os.Getenv("FOUNDRY_PASSWORD"); envPassword != "" {
+		password = envPassword
+	}
+	provider := releases.NewFoundryProvider("", cookie, cfg.ReleaseChannel, nil)
+	provider.Username = username
+	provider.Password = password
+	if cfg.FoundryPlatform != "" {
+		provider.Platform = cfg.FoundryPlatform
+	}
 	registry := &registryAdapter{}
 	shims := &shimAdapter{shimNames: cfg.ShimNames}
 
