@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/techno-savant/fvm/compare/v0.3.0...v0.4.0) (2026-05-04)
+
+
+### Features
+
+* build and upload release assets from release-please workflow ([a1d9b2f](https://github.com/techno-savant/fvm/commit/a1d9b2ff18cfa5128c6370307cc2d66d7f232c4f))
+
+
+### Bug Fixes
+
+* correct shim error handling when version not installed ([30243a3](https://github.com/techno-savant/fvm/commit/30243a301d6a06843508d605fac67eb347edc92e))
+
 ## [0.3.0](https://github.com/techno-savant/fvm/compare/v0.2.0...v0.3.0) (2026-05-04)
 
 
