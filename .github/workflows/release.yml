@@ -1,9 +1,9 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types:
+      - published
 
 permissions:
   contents: write
@@ -45,7 +45,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${{ github.event.release.tag_name }}"
           mkdir -p dist
           if [ "${GOOS}" = "windows" ]; then
             go build -o dist/fvm.exe ./cmd/fvm
@@ -63,7 +63,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/fvm_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.*
+          path: dist/fvm_${{ github.event.release.tag_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.*
 
   publish:
     needs: release
@@ -86,17 +86,12 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum fvm_${GITHUB_REF_NAME}_* > checksums.sha256
-
-      - name: Ensure release exists
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
-            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
+          VERSION="${{ github.event.release.tag_name }}"
+          sha256sum fvm_${VERSION}_* > checksums.sha256
 
       - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.zip dist/checksums.sha256 --clobber
+          VERSION="${{ github.event.release.tag_name }}"
+          gh release upload "${VERSION}" dist/*.tar.gz dist/*.zip dist/checksums.sha256 --clobber
