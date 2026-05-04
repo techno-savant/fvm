@@ -58,6 +58,8 @@ func DefaultVersionsRoot() string {
 // Implementations may talk to an API, a registry file, or a stub.
 type Provider interface {
 	ListRemote() ([]string, error)
+	ListRemoteReleases() ([]RemoteRelease, error)
+	ResolveDownload(version string) (Download, error)
 	Install(version, destDir string) error
 }
 

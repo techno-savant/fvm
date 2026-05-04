@@ -22,6 +22,9 @@ func TestDefaults(t *testing.T) {
 	if !cfg.PreferOfficialBuilds {
 		t.Fatal("expected prefer_official_builds to be true by default")
 	}
+	if cfg.FoundryPlatform != "" {
+		t.Fatalf("expected empty foundry_platform config default, got %q", cfg.FoundryPlatform)
+	}
 }
 
 func TestLoad_missing_file_returns_defaults(t *testing.T) {
@@ -37,7 +40,7 @@ func TestLoad_missing_file_returns_defaults(t *testing.T) {
 func TestLoad_overrides_fields(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.yaml")
-	content := "release_channel: nightly\ncache_ttl: 1h\n"
+	content := "release_channel: nightly\ncache_ttl: 1h\nfoundry_cookie: sessionid=abc; csrftoken=def\nfoundry_username: savant\nfoundry_password: hunter2\nfoundry_platform: windows_portable\n"
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +55,18 @@ func TestLoad_overrides_fields(t *testing.T) {
 	if cfg.CacheTTL != "1h" {
 		t.Fatalf("expected 1h, got %q", cfg.CacheTTL)
 	}
-	// Unspecified fields should retain defaults.
+	if cfg.FoundryCookie != "sessionid=abc; csrftoken=def" {
+		t.Fatalf("expected foundry_cookie override, got %q", cfg.FoundryCookie)
+	}
+	if cfg.FoundryUsername != "savant" {
+		t.Fatalf("expected foundry_username override, got %q", cfg.FoundryUsername)
+	}
+	if cfg.FoundryPassword != "hunter2" {
+		t.Fatalf("expected foundry_password override, got %q", cfg.FoundryPassword)
+	}
+	if cfg.FoundryPlatform != "windows_portable" {
+		t.Fatalf("expected foundry_platform override, got %q", cfg.FoundryPlatform)
+	}
 	if !cfg.AutoRegenerateShims {
 		t.Fatal("expected auto_regenerate_shims to keep default true")
 	}

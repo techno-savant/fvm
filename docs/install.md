@@ -8,13 +8,16 @@ This page focuses on the install experience for normal users, especially people 
 
 The installer installs the `fvm` CLI itself.
 
-It does not automatically install a Foundry version. After installing `fvm`, you still need to run commands like:
+It does not automatically install a Foundry version. After installing `fvm`, you still need to configure Foundry authentication and install a version:
 
 ```sh
-fvm list-remote
+export FOUNDRY_USERNAME='your-foundry-username-or-email'
+export FOUNDRY_PASSWORD='your-password'
 fvm install 13.346
 fvm global 13.346
 ```
+
+You can also use `FOUNDRY_COOKIE` instead of username/password if you already have a valid Foundry web session cookie.
 
 ## Recommended install
 
@@ -66,16 +69,101 @@ For fish:
 fvm init fish | source
 ```
 
-Then install and select a Foundry version:
+Then authenticate and install a Foundry version:
 
 ```sh
-fvm list-remote
+export FOUNDRY_USERNAME='your-foundry-username-or-email'
+export FOUNDRY_PASSWORD='your-password'
 fvm install 13.346
 fvm global 13.346
 fvm current
 ```
 
-If you skip those later steps, `fvm` will be installed but not doing anything useful yet.
+## Authenticated Foundry downloads
+
+Official Foundry packages are authenticated. `fvm install <version>` supports two approaches:
+
+1. pass a Foundry web session cookie
+2. give `fvm` a Foundry username and password so it can log in for you
+
+If both are configured, `fvm` uses the cookie first.
+
+### Recommended option: username and password
+
+For most people this is less annoying than scraping browser cookies.
+
+Current-shell example:
+
+```sh
+export FOUNDRY_USERNAME='your-foundry-username-or-email'
+export FOUNDRY_PASSWORD='your-password'
+fvm install 13.346
+```
+
+Persistent machine-local config example:
+
+```yaml
+# ~/.fvm/config.yaml
+foundry_username: "your-foundry-username-or-email"
+foundry_password: "your-password"
+```
+
+### Alternate option: session cookie
+
+If you already have a valid Foundry session and want to reuse it directly:
+
+```sh
+export FOUNDRY_COOKIE='sessionid=...; csrftoken=...'
+fvm install 13.346
+```
+
+Or in `~/.fvm/config.yaml`:
+
+```yaml
+foundry_cookie: "sessionid=...; csrftoken=..."
+```
+
+### Safety notes
+
+- treat your cookie and password like credentials
+- do not commit them to git
+- do not paste them into bug reports or screenshots
+- prefer machine-local config over project config for anything sensitive
+- if you keep shell history, be aware that inline exports may be recorded
+
+### When installs stop working
+
+If installs suddenly fail after working before, one of these is probably true:
+
+- your Foundry session cookie expired
+- your username/password changed or was entered wrong
+- your Foundry account does not have access to that build
+
+Refresh the cookie or retry with known-good credentials.
+
+## Foundry platform choice
+
+By default, `fvm` requests the `node` platform build from Foundry.
+
+That is intentional.
+
+The `node` artifact is the format `fvm` can install reliably today across platforms. Native desktop artifacts like `.dmg` are not the default path because they require installer-specific extraction logic that `fvm` does not pretend to support yet.
+
+If you want to force a different platform, set it in `~/.fvm/config.yaml`:
+
+```yaml
+foundry_platform: node
+```
+
+Supported values:
+
+- `node`
+- `linux`
+- `mac`
+- `windows`
+- `windows_portable`
+
+Unless you have a very specific reason, leave this on `node`.
 
 ## Choose a specific `fvm` release
 
@@ -251,105 +339,45 @@ If you do not want to use the installer script, download a release archive from 
 ### Pick the correct archive
 
 | Platform    | Archive                          |
-|-------------|----------------------------------|
-| Linux AMD64 | `fvm_vX.Y.Z_linux_amd64.tar.gz`  |
-| Linux ARM64 | `fvm_vX.Y.Z_linux_arm64.tar.gz`  |
-| macOS AMD64 | `fvm_vX.Y.Z_darwin_amd64.tar.gz` |
-| macOS ARM64 | `fvm_vX.Y.Z_darwin_arm64.tar.gz` |
+| ----------- | -------------------------------- |
+| macOS Intel | `fvm_Darwin_x86_64.tar.gz`       |
+| macOS Apple | `fvm_Darwin_arm64.tar.gz`        |
+| Linux Intel | `fvm_Linux_x86_64.tar.gz`        |
+| Linux ARM64 | `fvm_Linux_arm64.tar.gz`         |
+|
 
-### Verify the checksum
+### Install manually
 
-Download `checksums.sha256` from the same release and run:
+1. download the archive for your platform
+2. extract it
+3. move the `fvm` binary into a directory on your `PATH`
+4. run `fvm version`
+5. run `eval "$(fvm init <shell>)"`
 
-```sh
-sha256sum --check --ignore-missing checksums.sha256
-```
-
-If your system does not have `sha256sum`, use the equivalent checksum tool available on your platform.
-
-### Extract and install the binary
-
-```sh
-tar -xzf fvm_vX.Y.Z_<os>_<arch>.tar.gz
-install -m 0755 fvm /usr/local/bin/fvm
-```
-
-If `/usr/local/bin` is not writable, install to a directory you control and add that directory to your `PATH`.
-
-## Build from source
-
-Requirements: Go 1.22 or newer.
+Example:
 
 ```sh
-git clone https://github.com/foundry/fvm.git
-cd fvm
-go build -o fvm ./cmd/fvm
-install -m 0755 fvm /usr/local/bin/fvm
-```
-
-## Verify everything worked
-
-Use this checklist:
-
-```sh
+tar -xzf fvm_Linux_x86_64.tar.gz
+chmod +x fvm
+mv fvm ~/.local/bin/
 fvm version
-fvm help
-fvm init bash
 ```
 
-If shell integration is enabled, also try:
+Then continue with the auth and install flow described above.
+
+## If something feels broken
+
+Start here:
 
 ```sh
-fvm current
 fvm doctor
+fvm current
 ```
 
-If you have already installed a Foundry version, also try:
+If `install` fails with an unsupported archive format, you probably forced a native platform and got something like a `.dmg`. Put `foundry_platform` back to `node`.
 
-```sh
-fvm which
-```
+If `fvm` works but `foundry` does not, shell integration is probably missing.
 
-## Common install problems
-
-### `fvm: command not found`
-
-The binary installed successfully, but its directory is not on your `PATH`.
-
-Fix that first, then open a new shell or reload your shell config.
-
-### The installer ran, but `foundry` still does not switch versions
-
-That usually means one of these:
-
-- shell integration was never enabled
-- `~/.fvm/shims` is not on `PATH`
-- you have not installed a Foundry version yet
-- you have not selected a version yet with `global`, `local`, or `fvm_use`
-
-### `fvm current` reports no configured version
-
-That means `fvm` is installed, but you have not selected a version yet.
-
-Run something like:
-
-```sh
-fvm install 13.346
-fvm global 13.346
-```
-
-### `fvm which` says the version is not installed
-
-You selected a version, but the actual Foundry files for that version are not present yet.
-
-Install it with:
-
-```sh
-fvm install <version>
-```
-
-## Next step
-
-After installation, go back to the project root README and follow the Quick start there.
+If auth fails, verify whether you are using the right cookie or the right Foundry account credentials.
 
 [releases]: https://github.com/foundry/fvm/releases

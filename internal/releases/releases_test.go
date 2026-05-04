@@ -1,13 +1,23 @@
 package releases_test
 
 import (
+	"bytes"
+	"io"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/foundry/fvm/internal/install"
 	"github.com/foundry/fvm/internal/releases"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) Do(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestListInstalled_empty_when_no_versions_dir(t *testing.T) {
 	dir := t.TempDir()
@@ -24,7 +34,6 @@ func TestListInstalled_skips_incomplete(t *testing.T) {
 	dir := t.TempDir()
 	vDir := filepath.Join(dir, "13.346")
 
-	// Write manifest but no .complete marker.
 	if err := install.WriteManifest(vDir, install.Manifest{Version: "13.346"}); err != nil {
 		t.Fatal(err)
 	}
@@ -177,5 +186,193 @@ func TestIsVersionString(t *testing.T) {
 		if got := releases.IsVersionString(c.input); got != c.valid {
 			t.Errorf("IsVersionString(%q) = %v, want %v", c.input, got, c.valid)
 		}
+	}
+}
+
+func TestCurrentPlatformDefault(t *testing.T) {
+	if got := releases.CurrentPlatform(); got != "node" {
+		t.Fatalf("expected default platform node, got %q", got)
+	}
+}
+
+func TestNormalizeFoundryPlatform(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"", "node"},
+		{"node", "node"},
+		{"darwin", "mac"},
+		{"macos", "mac"},
+		{"linux", "linux"},
+		{"win", "windows"},
+		{"windows_portable", "windows_portable"},
+	}
+	for _, tc := range cases {
+		got, err := releases.NormalizeFoundryPlatform(tc.input)
+		if err != nil {
+			t.Fatalf("NormalizeFoundryPlatform(%q): %v", tc.input, err)
+		}
+		if got != tc.want {
+			t.Fatalf("NormalizeFoundryPlatform(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestNormalizeFoundryPlatform_rejectsUnknown(t *testing.T) {
+	if _, err := releases.NormalizeFoundryPlatform("plan9"); err == nil {
+		t.Fatal("expected unsupported platform error")
+	}
+}
+
+func TestFoundryProviderResolveDownload_usesNodeByDefault(t *testing.T) {
+	provider := releases.NewFoundryProvider("https://foundryvtt.com", "sessionid=abc; csrftoken=def", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/releases/download" {
+			t.Fatalf("unexpected path: %s", req.URL.Path)
+		}
+		q := req.URL.Query()
+		if q.Get("build") != "360" {
+			t.Fatalf("expected build=360, got %q", q.Get("build"))
+		}
+		if q.Get("platform") != "node" {
+			t.Fatalf("expected platform=node, got %q", q.Get("platform"))
+		}
+		if q.Get("response_type") != "json" {
+			t.Fatalf("expected response_type=json, got %q", q.Get("response_type"))
+		}
+		if !strings.Contains(req.Header.Get("Cookie"), "sessionid=abc") {
+			t.Fatalf("expected Cookie header, got %q", req.Header.Get("Cookie"))
+		}
+		body := `{"version":"14.360","url":"https://r2.foundryvtt.com/releases/14.360/FoundryVTT-14.360.zip?verify=abc","lifetime":300}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	}))
+
+	download, err := provider.ResolveDownload("14.360")
+	if err != nil {
+		t.Fatalf("ResolveDownload: %v", err)
+	}
+	if download.Version != "14.360" {
+		t.Fatalf("expected version 14.360, got %q", download.Version)
+	}
+	if !strings.Contains(download.SourceURL, "FoundryVTT-14.360.zip") {
+		t.Fatalf("unexpected source URL: %q", download.SourceURL)
+	}
+	if download.Platform != "node" {
+		t.Fatalf("expected platform node, got %q", download.Platform)
+	}
+}
+
+func TestFoundryProviderResolveDownload_normalizesConfiguredPlatform(t *testing.T) {
+	provider := releases.NewFoundryProvider("https://foundryvtt.com", "sessionid=abc; csrftoken=def", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if got := req.URL.Query().Get("platform"); got != "mac" {
+			t.Fatalf("expected normalized platform mac, got %q", got)
+		}
+		body := `{"version":"14.360","url":"https://r2.foundryvtt.com/releases/14.360/FoundryVTT-14.360.dmg?verify=abc","lifetime":300}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	}))
+	provider.Platform = "darwin"
+
+	download, err := provider.ResolveDownload("14.360")
+	if err != nil {
+		t.Fatalf("ResolveDownload: %v", err)
+	}
+	if download.Platform != "mac" {
+		t.Fatalf("expected normalized platform mac, got %q", download.Platform)
+	}
+}
+
+func TestFoundryProviderResolveDownload_requiresAuth(t *testing.T) {
+	provider := releases.NewFoundryProvider("https://foundryvtt.com", "", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, nil
+	}))
+	if _, err := provider.ResolveDownload("14.360"); err == nil {
+		t.Fatal("expected auth error")
+	}
+}
+
+func TestFoundryProviderInstall_rejectsUnsupportedArchiveFormat(t *testing.T) {
+	provider := releases.NewFoundryProvider("https://foundryvtt.com", "sessionid=abc", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Host, "foundryvtt.com") {
+			body := `{"version":"14.360","url":"https://r2.foundryvtt.com/releases/14.360/FoundryVTT-14.360.dmg?verify=abc","lifetime":300}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+			Header:     make(http.Header),
+		}, nil
+	}))
+	provider.Platform = "mac"
+	if err := provider.Install("14.360", t.TempDir()); err == nil {
+		t.Fatal("expected unsupported archive format error for dmg")
+	}
+}
+
+func TestFoundryProviderResolveDownload_logsInWithCredentials(t *testing.T) {
+	var requests []string
+	provider := releases.NewFoundryProvider("https://foundryvtt.com", "", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests = append(requests, req.Method+" "+req.URL.String())
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/auth/login/":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`<html><form><input name="csrfmiddlewaretoken" value="csrf123"></form></html>`)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/auth/login/":
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`<div id="login-welcome"><a href="/community/SavantUser">profile</a></div>`)),
+				Header:     make(http.Header),
+				Request:    req,
+			}
+			resp.Header.Add("Set-Cookie", "csrftoken=csrf123; Path=/")
+			resp.Header.Add("Set-Cookie", "sessionid=session456; Path=/")
+			return resp, nil
+		case req.Method == http.MethodGet && req.URL.Path == "/releases/download":
+			cookie := req.Header.Get("Cookie")
+			if !strings.Contains(cookie, "sessionid=session456") {
+				t.Fatalf("expected session cookie after login, got %q", cookie)
+			}
+			body := `{"version":"14.360","url":"https://r2.foundryvtt.com/releases/14.360/FoundryVTT-14.360.zip?verify=abc","lifetime":300}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	}))
+	provider.Username = "savant@example.com"
+	provider.Password = "secret"
+
+	download, err := provider.ResolveDownload("14.360")
+	if err != nil {
+		t.Fatalf("ResolveDownload: %v", err)
+	}
+	if download.Platform != "node" {
+		t.Fatalf("expected platform node, got %q", download.Platform)
+	}
+	if provider.Cookie == "" {
+		t.Fatal("expected provider cookie to be populated after login")
+	}
+	if len(requests) != 3 {
+		t.Fatalf("expected 3 requests (GET login, POST login, GET release), got %d", len(requests))
 	}
 }
