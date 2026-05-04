@@ -13,7 +13,7 @@
 #   curl -fsSL https://example.com/fvm/install.sh -o install.sh; VERSION=v0.2.0 sh install.sh
 set -eu
 
-OWNER="foundry"
+OWNER="techno-savant"
 REPO="fvm"
 BINARY_NAME="fvm"
 VERSION="${VERSION:-latest}"
