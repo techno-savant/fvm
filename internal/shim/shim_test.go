@@ -78,12 +78,19 @@ func TestDefaultNames(t *testing.T) {
 		t.Fatal("expected non-empty default names")
 	}
 	found := false
+	foundVTT := false
 	for _, n := range names {
 		if n == "foundry" {
 			found = true
 		}
+		if n == "foundryvtt" {
+			foundVTT = true
+		}
 	}
 	if !found {
 		t.Fatal("expected 'foundry' in default names")
+	}
+	if !foundVTT {
+		t.Fatal("expected 'foundryvtt' in default names")
 	}
 }

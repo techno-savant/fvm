@@ -34,7 +34,7 @@ func Generate(shimDir string, names []string) error {
 
 // DefaultNames returns the default set of shim names generated during setup.
 func DefaultNames() []string {
-	return []string{"foundry"}
+	return []string{"foundry", "foundryvtt"}
 }
 
 func writeShim(shimDir, name string) error {

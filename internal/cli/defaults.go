@@ -91,8 +91,11 @@ func (r *registryAdapter) ExecutablePath(version string) (string, error) {
 	layout := install.NewLayout(paths.VersionDir(version))
 	for _, candidate := range []string{
 		filepath.Join(layout.BinPath(), "foundry"),
+		filepath.Join(layout.BinPath(), "foundryvtt"),
 		filepath.Join(layout.FoundryPath(), "foundry"),
+		filepath.Join(layout.FoundryPath(), "foundryvtt"),
 		filepath.Join(layout.Root, "foundry"),
+		filepath.Join(layout.Root, "foundryvtt"),
 	} {
 		if _, statErr := os.Stat(candidate); statErr == nil {
 			return candidate, nil

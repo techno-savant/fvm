@@ -83,7 +83,7 @@ That only affects your current shell session. To make it permanent, add the same
 - zsh: `~/.zshrc`
 - fish: `~/.config/fish/config.fish`
 
-This step puts `~/.fvm/shims` on your `PATH`, which is how `fvm` intercepts `foundry` and routes it to the selected version.
+This step puts `~/.fvm/shims` on your `PATH`, which is how `fvm` intercepts `foundry` and `foundryvtt` and routes them to the selected version.
 
 ### 4. Configure Foundry authentication
 
@@ -258,6 +258,17 @@ fvm which
 
 If the selected version is not installed yet, `fvm` tells you which install command to run.
 
+Both default shim names resolve through the same executable selection logic:
+
+```sh
+foundry
+foundryvtt
+fvm which foundry
+fvm which foundryvtt
+```
+
+`fvm` generates both `foundry` and `foundryvtt` shims by default.
+
 ### `fvm where <version>`
 
 Shows the install directory for a specific version.
@@ -342,7 +353,7 @@ Rebuilds the shim executables in `~/.fvm/shims`.
 fvm shim regenerate
 ```
 
-Run this if your shell integration is set up but the shim directory seems stale.
+Run this if your shell integration is set up but the shim directory seems stale, or after upgrading from an older `fvm` build that only wrote one shim.
 
 ### `fvm doctor`
 
@@ -396,6 +407,8 @@ eval "$(fvm init bash)"
 ```
 
 Or the zsh/fish equivalent, then try again.
+
+If `foundryvtt` fails the same way, the fix is the same. If shell integration is already enabled, run `fvm shim regenerate` to rebuild the shim directory.
 
 ### `fvm current` says no version is configured
 

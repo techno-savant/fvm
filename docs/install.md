@@ -68,6 +68,8 @@ For fish:
 fvm init fish | source
 ```
 
+This adds `~/.fvm/shims` to your `PATH` so both `foundry` and `foundryvtt` resolve through `fvm`.
+
 Then authenticate and install a Foundry version:
 
 ```sh
@@ -75,6 +77,12 @@ export FOUNDRY_COOKIE='sessionid=...; csrftoken=...'
 fvm install 13.346
 fvm global 13.346
 fvm current
+```
+
+If you already had shims from an older `fvm` build, regenerate them after upgrading:
+
+```sh
+fvm shim regenerate
 ```
 
 Username/password login exists as a best-effort fallback, but the cookie path is the reliable one.
