@@ -452,6 +452,44 @@ fvm doctor
 
 That will usually tell you whether a local `.fvm-version`, shell override, or missing `PATH` entry is causing the mismatch.
 
+## Release process
+
+`fvm` now uses GitHub Actions for CI and release automation.
+
+### CI
+
+On every push to `main` and every pull request, GitHub Actions runs:
+
+- `go test ./...`
+- a smoke build of `./cmd/fvm`
+
+### Versioning
+
+This repo is set up for conventional commits and `release-please`.
+
+Use commit prefixes like:
+
+- `fix:` for patch releases
+- `feat:` for minor releases
+- `feat!:` or a `BREAKING CHANGE:` footer for major releases
+- `docs:`, `ci:`, `chore:` for non-feature maintenance work
+
+`release-please` watches `main` and opens or updates a release PR based on those commits.
+
+### Publishing
+
+When the release PR is merged and a tag like `v0.1.2` is created, the release workflow automatically:
+
+- builds darwin/amd64
+- builds darwin/arm64
+- builds linux/amd64
+- builds linux/arm64
+- packages `fvm_<tag>_<os>_<arch>.tar.gz`
+- generates `checksums.sha256`
+- uploads all assets to the matching GitHub Release
+
+That means the installer script can rely on release assets existing, instead of someone having to remember to upload them manually.
+
 ## Status
 
 `fvm` is still early. The current implementation is strongest at:
