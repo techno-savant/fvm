@@ -90,28 +90,42 @@ This step puts `~/.fvm/shims` on your `PATH`, which is how `fvm` intercepts `fou
 Official Foundry downloads are authenticated. `fvm` supports two ways to do that:
 
 - pass an existing Foundry web session cookie
-- give `fvm` your Foundry username and password so it can log in for you
+- optionally give `fvm` your Foundry username and password so it can try to log in for you
 
-Cookie-based auth is still the simplest low-level option:
+Recommended option: cookie-based auth.
 
 ```sh
 export FOUNDRY_COOKIE='sessionid=...; csrftoken=...'
 ```
 
-Credential-based auth is usually more convenient:
+Quick way to get it from your browser:
+
+1. log in to https://foundryvtt.com in your browser
+2. open DevTools
+3. go to Application/Storage -> Cookies -> https://foundryvtt.com
+4. copy the `sessionid` and `csrftoken` cookie values
+5. format them like this:
+
+```sh
+export FOUNDRY_COOKIE='sessionid=YOUR_SESSION_ID; csrftoken=YOUR_CSRF_TOKEN'
+```
+
+You can also often find them in the browser Network tab by opening any request to `foundryvtt.com` and copying the `Cookie` request header.
+
+Username/password login is best-effort only and may be rejected by Foundry's website flow.
 
 ```sh
 export FOUNDRY_USERNAME='your-foundry-username-or-email'
-export FOUNDRY_PASSWORD='your-password'
+export FOUNDRY_PASSWORD='***'
 ```
 
 You can also put either form in `~/.fvm/config.yaml`:
 
 ```yaml
+foundry_cookie: "sessionid=...; csrftoken=..."
+# optional best-effort fallback
 foundry_username: "your-foundry-username-or-email"
 foundry_password: "your-password"
-# or
-foundry_cookie: "sessionid=...; csrftoken=..."
 ```
 
 If both are present, `fvm` uses the cookie first.

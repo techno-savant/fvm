@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # fvm installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/foundry/fvm/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/techno-savant/fvm/main/scripts/install.sh | sh
 #
 # Environment variables:
 #   VERSION     - release tag to install (default: latest)
@@ -18,6 +18,7 @@ REPO="fvm"
 BINARY_NAME="fvm"
 VERSION="${VERSION:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-}"
+API_BASE="https://api.github.com/repos/${OWNER}/${REPO}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -41,6 +42,41 @@ make_temp_dir() {
   fi
   echo "error: could not create temporary directory" >&2
   exit 1
+}
+
+has_gh_auth() {
+  command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1
+}
+
+github_token() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    printf '%s\n' "${GITHUB_TOKEN}"
+    return 0
+  fi
+  if has_gh_auth; then
+    gh auth token
+    return 0
+  fi
+  return 1
+}
+
+api_get() {
+  url="$1"
+  if token="$(github_token 2>/dev/null)"; then
+    curl -fsSL -H "Authorization: Bearer ${token}" "https://api.github.com/${url}"
+    return 0
+  fi
+  curl -fsSL "https://api.github.com/${url}"
+}
+
+download_file() {
+  url="$1"
+  dest="$2"
+  if token="$(github_token 2>/dev/null)"; then
+    curl -fsSL -H "Authorization: Bearer ${token}" "$url" -o "$dest"
+    return 0
+  fi
+  curl -fsSL "$url" -o "$dest"
 }
 
 # ---------------------------------------------------------------------------
@@ -98,15 +134,17 @@ fi
 if [ "$VERSION" = "latest" ]; then
   need_cmd curl
   printf 'Resolving latest release... '
-  VERSION="$(curl -fsSL \
-    "https://api.github.com/repos/${OWNER}/${REPO}/releases/latest" \
-    | extract_tag_name)"
-  if [ -z "$VERSION" ]; then
+  if VERSION="$(api_get "repos/${OWNER}/${REPO}/releases/latest" 2>/dev/null | extract_tag_name)" && [ -n "$VERSION" ]; then
+    echo "$VERSION"
+  else
     echo ""
     echo "error: could not determine latest release version" >&2
+    echo "hint: this repository may be private. Use one of these options:" >&2
+    echo "  - authenticate with gh: gh auth login" >&2
+    echo "  - export GITHUB_TOKEN with repo read access" >&2
+    echo "  - set VERSION explicitly, e.g. VERSION=v0.1.0 ./scripts/install.sh" >&2
     exit 1
   fi
-  echo "$VERSION"
 fi
 
 # Ensure version tag starts with 'v'
@@ -119,9 +157,9 @@ esac
 # Construct URLs
 # ---------------------------------------------------------------------------
 ARCHIVE_NAME="${BINARY_NAME}_${VERSION_TAG}_${OS}_${ARCH}.tar.gz"
-BASE_URL="https://github.com/${OWNER}/${REPO}/releases/download/${VERSION_TAG}"
-DOWNLOAD_URL="${BASE_URL}/${ARCHIVE_NAME}"
-CHECKSUM_URL="${BASE_URL}/checksums.sha256"
+PUBLIC_BASE_URL="https://github.com/${OWNER}/${REPO}/releases/download/${VERSION_TAG}"
+DOWNLOAD_URL="${PUBLIC_BASE_URL}/${ARCHIVE_NAME}"
+CHECKSUM_URL="${PUBLIC_BASE_URL}/checksums.sha256"
 
 echo "Installing ${BINARY_NAME} ${VERSION_TAG} (${OS}/${ARCH})"
 echo "  source:  ${DOWNLOAD_URL}"
@@ -141,7 +179,17 @@ need_cmd curl
 
 echo ""
 printf 'Downloading archive... '
-curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${ARCHIVE_NAME}"
+download_file "$DOWNLOAD_URL" "${TMP_DIR}/${ARCHIVE_NAME}" >/dev/null 2>&1 || {
+  echo ""
+  echo "error: failed to download release archive" >&2
+  echo "hint: if the repo is private, authenticate with gh or set GITHUB_TOKEN" >&2
+  exit 1
+}
+if [ ! -s "${TMP_DIR}/${ARCHIVE_NAME}" ]; then
+  echo ""
+  echo "error: downloaded release archive is empty" >&2
+  exit 1
+fi
 echo "done"
 
 # ---------------------------------------------------------------------------
@@ -158,11 +206,18 @@ else
 fi
 
 printf 'Verifying checksum... '
-curl -fsSL "$CHECKSUM_URL" -o "${TMP_DIR}/checksums.sha256"
-EXPECTED="$(grep -F "  ${ARCHIVE_NAME}" "${TMP_DIR}/checksums.sha256" | awk 'NR==1 {print $1}')"
-if [ -z "$EXPECTED" ]; then
-  EXPECTED="$(grep -F " ${ARCHIVE_NAME}" "${TMP_DIR}/checksums.sha256" | awk 'NR==1 {print $1}')"
+download_file "$CHECKSUM_URL" "${TMP_DIR}/checksums.sha256" >/dev/null 2>&1 || {
+  echo ""
+  echo "error: failed to download checksums file" >&2
+  echo "hint: if the repo is private, authenticate with gh or set GITHUB_TOKEN" >&2
+  exit 1
+}
+if [ ! -s "${TMP_DIR}/checksums.sha256" ]; then
+  echo ""
+  echo "error: downloaded checksums file is empty" >&2
+  exit 1
 fi
+EXPECTED="$(awk -v name="${ARCHIVE_NAME}" '$2 == name {print $1; exit}' "${TMP_DIR}/checksums.sha256")"
 if [ -z "$EXPECTED" ]; then
   echo ""
   echo "error: ${ARCHIVE_NAME} not found in checksums file" >&2

@@ -328,11 +328,17 @@ func TestFoundryProviderResolveDownload_logsInWithCredentials(t *testing.T) {
 		case req.Method == http.MethodGet && req.URL.Path == "/auth/login/":
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`<html><form><input name="csrfmiddlewaretoken" value="csrf123"></form></html>`)),
+				Body:       io.NopCloser(strings.NewReader(`<html><form id="login-form" method="post" action="/auth/login/"><input type="hidden" name="csrfmiddlewaretoken" value="csrf123"><input type="hidden" value="/auth/login/" name="next"></form></html>`)),
 				Header:     make(http.Header),
 				Request:    req,
 			}, nil
 		case req.Method == http.MethodPost && req.URL.Path == "/auth/login/":
+			if got := req.FormValue("next"); got != "/auth/login/" {
+				t.Fatalf("expected next=/auth/login/, got %q", got)
+			}
+			if _, ok := req.PostForm["login"]; !ok {
+				t.Fatal("expected login field in form submission")
+			}
 			resp := &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(`<div id="login-welcome"><a href="/community/SavantUser">profile</a></div>`)),

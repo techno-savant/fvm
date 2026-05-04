@@ -11,13 +11,12 @@ The installer installs the `fvm` CLI itself.
 It does not automatically install a Foundry version. After installing `fvm`, you still need to configure Foundry authentication and install a version:
 
 ```sh
-export FOUNDRY_USERNAME='your-foundry-username-or-email'
-export FOUNDRY_PASSWORD='your-password'
+export FOUNDRY_COOKIE='sessionid=...; csrftoken=...'
 fvm install 13.346
 fvm global 13.346
 ```
 
-You can also use `FOUNDRY_COOKIE` instead of username/password if you already have a valid Foundry web session cookie.
+`FOUNDRY_COOKIE` is the recommended auth method. Username/password login exists as a best-effort fallback and may be rejected by Foundry's website flow.
 
 ## Recommended install
 
@@ -72,31 +71,63 @@ fvm init fish | source
 Then authenticate and install a Foundry version:
 
 ```sh
-export FOUNDRY_USERNAME='your-foundry-username-or-email'
-export FOUNDRY_PASSWORD='your-password'
+export FOUNDRY_COOKIE='sessionid=...; csrftoken=...'
 fvm install 13.346
 fvm global 13.346
 fvm current
 ```
+
+Username/password login exists as a best-effort fallback, but the cookie path is the reliable one.
 
 ## Authenticated Foundry downloads
 
 Official Foundry packages are authenticated. `fvm install <version>` supports two approaches:
 
 1. pass a Foundry web session cookie
-2. give `fvm` a Foundry username and password so it can log in for you
+2. optionally give `fvm` a Foundry username and password so it can try to log in for you
 
 If both are configured, `fvm` uses the cookie first.
 
-### Recommended option: username and password
+### Recommended option: session cookie
 
-For most people this is less annoying than scraping browser cookies.
+This is the reliable path.
+
+If you already have a valid Foundry session and want to reuse it directly:
+
+```sh
+export FOUNDRY_COOKIE='sessionid=...; csrftoken=...'
+fvm install 13.346
+```
+
+Quick way to get it from your browser:
+
+1. log in to https://foundryvtt.com in your browser
+2. open DevTools
+3. go to Application/Storage -> Cookies -> https://foundryvtt.com
+4. copy the `sessionid` and `csrftoken` cookie values
+5. format them like this:
+
+```sh
+export FOUNDRY_COOKIE='sessionid=YOUR_SESSION_ID; csrftoken=YOUR_CSRF_TOKEN'
+```
+
+You can also often find them in the browser Network tab by opening any request to `foundryvtt.com` and copying the `Cookie` request header.
+
+Or in `~/.fvm/config.yaml`:
+
+```yaml
+foundry_cookie: "sessionid=...; csrftoken=..."
+```
+
+### Optional fallback: username and password
+
+This is best-effort only and may be rejected by Foundry's website flow.
 
 Current-shell example:
 
 ```sh
 export FOUNDRY_USERNAME='your-foundry-username-or-email'
-export FOUNDRY_PASSWORD='your-password'
+export FOUNDRY_PASSWORD='***'
 fvm install 13.346
 ```
 
@@ -108,20 +139,7 @@ foundry_username: "your-foundry-username-or-email"
 foundry_password: "your-password"
 ```
 
-### Alternate option: session cookie
-
-If you already have a valid Foundry session and want to reuse it directly:
-
-```sh
-export FOUNDRY_COOKIE='sessionid=...; csrftoken=...'
-fvm install 13.346
-```
-
-Or in `~/.fvm/config.yaml`:
-
-```yaml
-foundry_cookie: "sessionid=...; csrftoken=..."
-```
+If username/password login fails, use `FOUNDRY_COOKIE` instead.
 
 ### Safety notes
 

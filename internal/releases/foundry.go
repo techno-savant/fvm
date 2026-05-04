@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	urlpkg "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -51,6 +51,18 @@ type Download struct {
 // HTTPClient is the subset of http.Client used by FoundryProvider.
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
+}
+
+type roundTripperFunc func(req *http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func roundTripperFromClient(client HTTPClient) http.RoundTripper {
+	return roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return client.Do(req)
+	})
 }
 
 // FoundryProvider talks to the foundryvtt.com releases API using cookie auth.
@@ -217,92 +229,51 @@ func (p *FoundryProvider) fetchReleaseMetadata(version, platform string) (foundr
 }
 
 func (p *FoundryProvider) loginAndGetCookie() (string, error) {
-	loginURL := strings.TrimRight(p.BaseURL, "/") + "/auth/login/"
-	getReq, err := http.NewRequest(http.MethodGet, loginURL, nil)
+	var transport http.RoundTripper
+	if p.Client != nil {
+		transport = roundTripperFromClient(p.Client)
+	}
+	result, err := performFoundryLogin(p.BaseURL, p.Username, p.Password, transport)
 	if err != nil {
 		return "", err
 	}
-	getReq.Header.Set("Accept", "text/html,application/xhtml+xml")
-	getResp, err := p.Client.Do(getReq)
-	if err != nil {
-		return "", fmt.Errorf("request Foundry login page: %w", err)
-	}
-	body, readErr := io.ReadAll(getResp.Body)
-	getResp.Body.Close()
-	if readErr != nil {
-		return "", fmt.Errorf("read Foundry login page: %w", readErr)
-	}
-	if getResp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("request Foundry login page: %s", getResp.Status)
-	}
+	return result.CookieHeader, nil
+}
 
-	csrfToken, err := extractCSRFToken(string(body))
-	if err != nil {
-		return "", err
-	}
-	cookieHeader := collapseSetCookies(getResp.Header.Values("Set-Cookie"))
-
-	form := url.Values{}
-	form.Set("csrfmiddlewaretoken", csrfToken)
-	form.Set("next", "/")
-	form.Set("username", p.Username)
-	form.Set("password", p.Password)
-
-	postReq, err := http.NewRequest(http.MethodPost, loginURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", err
-	}
-	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	postReq.Header.Set("Referer", loginURL)
-	postReq.Header.Set("Accept", "text/html,application/xhtml+xml")
-	if cookieHeader != "" {
-		postReq.Header.Set("Cookie", cookieHeader)
-	}
-	postResp, err := p.Client.Do(postReq)
-	if err != nil {
-		return "", fmt.Errorf("submit Foundry login form: %w", err)
-	}
-	postBody, readErr := io.ReadAll(postResp.Body)
-	postResp.Body.Close()
-	if readErr != nil {
-		return "", fmt.Errorf("read Foundry login response: %w", readErr)
-	}
-	if postResp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("submit Foundry login form: %s", postResp.Status)
-	}
-
-	cookieHeader = mergeCookieHeaders(cookieHeader, collapseSetCookies(postResp.Header.Values("Set-Cookie")))
-	if !strings.Contains(cookieHeader, "sessionid=") {
-		return "", fmt.Errorf("unable to log in to Foundry with supplied credentials")
-	}
-
-	if _, err := extractCommunityUsername(string(postBody)); err != nil {
-		return "", err
-	}
-
-	return cookieHeader, nil
+func (p *FoundryProvider) AuthCookieForDebug() (string, error) {
+	return p.loginAndGetCookie()
 }
 
 func extractCSRFToken(body string) (string, error) {
-	const marker = `name="csrfmiddlewaretoken"`
-	idx := strings.Index(body, marker)
-	if idx == -1 {
+	formHTML := extractLoginForm(body)
+	if strings.TrimSpace(formHTML) == "" {
+		return "", fmt.Errorf("could not find login form on Foundry login page")
+	}
+	token := extractHiddenInputValue(formHTML, "csrfmiddlewaretoken")
+	if strings.TrimSpace(token) == "" {
 		return "", fmt.Errorf("could not find csrfmiddlewaretoken on Foundry login page")
 	}
-	valueIdx := strings.Index(body[idx:], `value="`)
-	if valueIdx == -1 {
-		return "", fmt.Errorf("could not find csrfmiddlewaretoken value on Foundry login page")
-	}
-	start := idx + valueIdx + len(`value="`)
-	end := strings.Index(body[start:], `"`)
-	if end == -1 {
-		return "", fmt.Errorf("could not parse csrfmiddlewaretoken value on Foundry login page")
-	}
-	token := strings.TrimSpace(body[start : start+end])
-	if token == "" {
-		return "", fmt.Errorf("csrfmiddlewaretoken was empty on Foundry login page")
-	}
 	return token, nil
+}
+
+func extractLoginForm(body string) string {
+	re := regexp.MustCompile(`(?is)<form[^>]*\bid="login-form"[^>]*>.*?</form>`)
+	return strings.TrimSpace(re.FindString(body))
+}
+
+func extractHiddenInputValue(body, name string) string {
+	tagPattern := fmt.Sprintf(`(?is)<input[^>]*\bname="%s"[^>]*>`, regexp.QuoteMeta(name))
+	tagRE := regexp.MustCompile(tagPattern)
+	tag := tagRE.FindString(body)
+	if strings.TrimSpace(tag) == "" {
+		return ""
+	}
+	valueRE := regexp.MustCompile(`(?i)\bvalue="([^"]*)"`)
+	match := valueRE.FindStringSubmatch(tag)
+	if len(match) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
 }
 
 func extractCommunityUsername(body string) (string, error) {
@@ -339,6 +310,21 @@ func mergeCookieHeaders(existing, incoming string) string {
 			cookies[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
 		}
 	}
+	return cookieMapToHeader(cookies)
+}
+
+func cookiesToHeader(cookies []*http.Cookie) string {
+	values := make(map[string]string, len(cookies))
+	for _, cookie := range cookies {
+		if cookie == nil || strings.TrimSpace(cookie.Name) == "" {
+			continue
+		}
+		values[strings.TrimSpace(cookie.Name)] = cookie.Value
+	}
+	return cookieMapToHeader(values)
+}
+
+func cookieMapToHeader(cookies map[string]string) string {
 	keys := make([]string, 0, len(cookies))
 	for key := range cookies {
 		keys = append(keys, key)
@@ -370,10 +356,16 @@ func (p *FoundryProvider) downloadAndExtract(url, destDir string) error {
 		return fmt.Errorf("download foundry release: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 
+	archiveURL, err := urlpkg.Parse(url)
+	if err != nil {
+		return fmt.Errorf("parse release archive url: %w", err)
+	}
+	archivePath := strings.ToLower(archiveURL.Path)
+
 	switch {
-	case strings.HasSuffix(strings.ToLower(url), ".zip"):
+	case strings.HasSuffix(archivePath, ".zip"):
 		return extractZip(resp.Body, destDir)
-	case strings.HasSuffix(strings.ToLower(url), ".tar.gz"), strings.HasSuffix(strings.ToLower(url), ".tgz"):
+	case strings.HasSuffix(archivePath, ".tar.gz"), strings.HasSuffix(archivePath, ".tgz"):
 		return extractTarGz(resp.Body, destDir)
 	default:
 		return fmt.Errorf("unsupported release archive format: %s", url)
