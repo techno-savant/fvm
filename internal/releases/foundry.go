@@ -118,7 +118,27 @@ func (p *FoundryProvider) ListRemote() ([]string, error) {
 }
 
 func (p *FoundryProvider) ListRemoteReleases() ([]RemoteRelease, error) {
-	return nil, fmt.Errorf("list-remote is not implemented against the authenticated Foundry download API yet")
+	endpoint := fmt.Sprintf("%s/releases/", p.BaseURL)
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+
+	resp, err := p.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("foundry release notes page: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read foundry release notes page: %w", err)
+	}
+	return parseFoundryReleaseNotes(string(body), p.channel()), nil
 }
 
 func (p *FoundryProvider) ResolveDownload(version string) (Download, error) {
@@ -163,6 +183,53 @@ func (p *FoundryProvider) channel() string {
 		return "stable"
 	}
 	return p.ReleaseChannel
+}
+
+func parseFoundryReleaseNotes(body, channel string) []RemoteRelease {
+	matches := regexp.MustCompile(`Release\s+(\d+\.\d+)`).FindAllStringSubmatch(body, -1)
+	seen := make(map[string]struct{}, len(matches))
+	releases := make([]RemoteRelease, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		version := strings.TrimSpace(match[1])
+		if version == "" {
+			continue
+		}
+		if _, ok := seen[version]; ok {
+			continue
+		}
+		seen[version] = struct{}{}
+		releases = append(releases, RemoteRelease{Version: version, Channel: channel})
+	}
+	sort.SliceStable(releases, func(i, j int) bool {
+		return compareFoundryVersion(releases[i].Version, releases[j].Version) > 0
+	})
+	return releases
+}
+
+func compareFoundryVersion(a, b string) int {
+	parse := func(v string) (int, int) {
+		var major, build int
+		fmt.Sscanf(v, "%d.%d", &major, &build)
+		return major, build
+	}
+	aMajor, aBuild := parse(a)
+	bMajor, bBuild := parse(b)
+	if aMajor != bMajor {
+		if aMajor > bMajor {
+			return 1
+		}
+		return -1
+	}
+	if aBuild != bBuild {
+		if aBuild > bBuild {
+			return 1
+		}
+		return -1
+	}
+	return 0
 }
 
 func NormalizeFoundryPlatform(value string) (string, error) {

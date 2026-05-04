@@ -353,6 +353,47 @@ func TestFoundryProviderInstall_dmgRequiresMacOSHost(t *testing.T) {
 	}
 }
 
+func TestFoundryProviderListRemoteReleases_scrapesReleaseNotes(t *testing.T) {
+	provider := releases.NewFoundryProvider("https://foundryvtt.com", "sessionid=abc", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet || req.URL.Path != "/releases/" {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+		}
+		body := `
+			<html>
+				<h2>Version 14</h2>
+				<h3>Release 14.360</h3>
+				<h3>Release 14.359</h3>
+				<h2>Version 13</h2>
+				<h3>Release 13.351</h3>
+				<h3>Release 13.350</h3>
+				<h2>Version 12</h2>
+				<h3>Release 12.343</h3>
+			</html>`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	}))
+
+	releasesList, err := provider.ListRemoteReleases()
+	if err != nil {
+		t.Fatalf("ListRemoteReleases: %v", err)
+	}
+	got := make([]string, 0, len(releasesList))
+	for _, rel := range releasesList {
+		got = append(got, rel.Version)
+		if rel.Channel != "stable" {
+			t.Fatalf("expected stable channel, got %q", rel.Channel)
+		}
+	}
+	want := []string{"14.360", "14.359", "13.351", "13.350", "12.343"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+}
+
 func TestFoundryProviderResolveDownload_logsInWithCredentials(t *testing.T) {
 	var requests []string
 	provider := releases.NewFoundryProvider("https://foundryvtt.com", "", "stable", roundTripFunc(func(req *http.Request) (*http.Response, error) {
