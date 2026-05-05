@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/techno-savant/fvm/compare/v0.5.0...v0.6.0) (2026-05-05)
+
+
+### Features
+
+* implement data path isolation for fvm ([f5149d0](https://github.com/techno-savant/fvm/commit/f5149d0592422485d479d852de1e227d6fd5d203))
+* support remote Foundry version listing ([a3605e8](https://github.com/techno-savant/fvm/commit/a3605e824ca95632dba0fbb1b4ef3b1d2d538277))
+
 ## [0.5.0](https://github.com/techno-savant/fvm/compare/v0.4.0...v0.5.0) (2026-05-04)
 
 
